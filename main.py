@@ -172,13 +172,17 @@ class MainPanel(wx.Panel):
         wx.Panel.__init__(self, parent, id)
         panelSizer = wx.BoxSizer(wx.VERTICAL)
         panelSizerButtons = wx.BoxSizer(wx.HORIZONTAL)
-        panelSizerCaptionSave = wx.FlexGridSizer(1, 3, 1, 3)
+        panelSizerCaptionSave = wx.FlexGridSizer(1, 4, 1, 4)
         self.addButton = wx.Button(self, -1, u"Добавить", size=(100, 30))
         self.delButton = wx.Button(self, -1, u"Удалить", size=(100, 30))
 
         self.mainText = wx.TextCtrl(self, -1, style=wx.MULTIPLE)
 
         self.costText = wx.StaticText(self, -1, label=u'Итого=')
+
+        self.count = wx.TextCtrl(self, -1, value='1', size=(50, 25))
+
+        self.countText = wx.StaticText(self, -1, label=u'Шт.=')
 
         self.captionTextSizer = wx.BoxSizer(wx.HORIZONTAL)
         self.gridPanel = wx.Panel(self)
@@ -189,6 +193,8 @@ class MainPanel(wx.Panel):
 
         panelSizerCaptionSave.Add((10, 10))
         panelSizerCaptionSave.Add(self.costText, 0, wx.ALIGN_RIGHT)
+        panelSizerCaptionSave.Add(self.count, 0, wx.ALIGN_RIGHT)
+        panelSizerCaptionSave.Add(self.countText, 0, wx.ALIGN_RIGHT)
         panelSizerCaptionSave.AddGrowableCol(1)
 
         panelSizerButtons.Add(self.addButton, 0)
@@ -205,6 +211,7 @@ class MainPanel(wx.Panel):
         self.Bind(wx.EVT_BUTTON, self.clickAdd, self.addButton)
         self.Bind(wx.EVT_BUTTON, self.clickDel, self.delButton)
         self.listPanel.Bind(wx.grid.EVT_GRID_CELL_CHANGE, self.setCost)
+        self.count.Bind(wx.EVT_KEY_UP, self.setCost, self.count)
 
 
     def clickAdd(self, event):
@@ -222,6 +229,12 @@ class MainPanel(wx.Panel):
     def setCost(self, evt):
         summ = self.listPanel.calcSum(evt)
         self.costText.SetLabel(u"Итого= {} р.".format(summ))
+        try:
+            count = float(self.count.GetValue())
+        except:
+            count = 1
+        price = float(summ)/count
+        self.countText.SetLabel(u"Шт= {} р.".format(twoZeroPoint(price)))
         self.Layout()
 
 
