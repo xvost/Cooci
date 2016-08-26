@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import wx
-import sys
+import os
 import sqlite3
 import random
 import wx.grid as gridlib
@@ -35,6 +35,12 @@ class DBwork():
         self.cursor.execute('select name from receipt')
         return self.cursor.fetchall()
 
+    def getListName(self, name):
+        req = u'select name from ingredients where name like "{name}%"'.format(name=name)
+        self.cursor.execute(req)
+        data = self.cursor.fetchall()
+        return data
+
     def saveReceipt(self, nameRec, textRec, dataRec):
         self.cursor.execute('''
             delete from receipt where name = :name''', {"name": nameRec})
@@ -64,7 +70,8 @@ class DBwork():
     def getReceiptData(self, receipt):
         receiptData = []
         self.cursor.execute('''
-        select name, type, nomVolType, priceNomVolType, count, sum from ingredients where nameRec = :receipt''', {"receipt": receipt})
+        select name, type, nomVolType, priceNomVolType, count, sum from ingredients where nameRec = :receipt''',
+                            {"receipt": receipt})
         data = self.cursor.fetchall()
         if len(data) == 0:
             return [{'name': '',
@@ -93,78 +100,167 @@ class DBwork():
     def Close(self):
         self.connect.close()
 
+DB = DBwork('test.db')
+
+
+class ReceiptChoice (wx.Frame):
+    def __init__(self, parent, ID, title, pos=wx.DefaultPosition,
+            size=wx.DefaultSize, style=wx.DEFAULT_FRAME_STYLE):
+        wx.Frame.__init__(self, parent, ID, title, pos, size, style)
+        sizer=wx.BoxSizer(wx.VERTICAL)
+        self.box = MainListBox(self, -1, choices=self.loadDataToListBox())
+        self.OK = wx.Button(self, -1, 'OK')
+        sizer.Add(self.box, 1, wx.EXPAND)
+        sizer.Add(self.OK, 0, wx.EXPAND)
+        self.SetSizer(sizer)
+        self.Bind(wx.EVT_BUTTON, self.setData, self.OK)
+
+    def loadDataToListBox(self):
+        keys = []
+        for i in DB.getListReceipt():
+            keys.append(i[0])
+        return keys
+
+    def setData(self, evt):
+        name = self.box.GetString(self.box.GetSelection())
+        i.mainPanel.nameReceipt.SetLabel(name)
+        i.loadReceipt()
+        self.Destroy()
 
 class Main(wx.Frame):
     def __init__(self):
-        self.DB = DBwork('test.db')
+        # self.DB = DBwork('test.db')
         wx.Frame.__init__(self, None, title='Cooci!', size=(1000, 700), style=wx.MINIMIZE_BOX
-                                                                              # | wx.MAXIMIZE_BOX
+                                                                              | wx.MAXIMIZE_BOX
                                                                               | wx.RESIZE_BORDER
                                                                               | wx.SYSTEM_MENU
                                                                               | wx.CAPTION
                                                                               | wx.CLOSE_BOX
                                                                               | wx.CLIP_CHILDREN)
+        self.mainMenu = wx.MenuBar()
+        self.menuFile = wx.Menu()
+        self.menuFile.Append(1011, u'Открыть')
+        self.mainMenu.Append(self.menuFile, u'База')
+        self.menuReceipt = wx.Menu()
+        self.menuReceipt.Append(1021, u'Выбрать')
+        self.menuReceipt.Append(1022, u'Сохранить')
+        self.menuReceipt.Append(1023, u'Новый')
+        self.menuReceipt.Append(1024, u'Удалить')
+        self.mainMenu.Append(self.menuReceipt, u'Рецепты')
+        self.SetMenuBar(self.mainMenu)
+
+        self.Bind(wx.EVT_MENU, self.openBase, id=1011)
+        self.Bind(wx.EVT_MENU, self.openReceipt, id=1021)
+        self.Bind(wx.EVT_MENU, self.saveReceipt, id=1022)
+        self.Bind(wx.EVT_MENU, self.newReceipt, id=1023)
+        self.Bind(wx.EVT_MENU, self.deleteReceipt, id=1024)
+
         mainSizerHor = wx.BoxSizer(wx.HORIZONTAL)
-        mainSizerVert = wx.BoxSizer(wx.VERTICAL)
         self.mainPanel = MainPanel(self, -1)
-        self.mainListBox = MainListBox(self, -1, choices=self.loadDataToListBox())
-        self.addButton = wx.Button(self, -1, u'Новый')
-        self.delButton = wx.Button(self, -1, u'Удалить')
-        self.saveButton = wx.Button(self, -1, u'Сохранить')
-        mainSizerVert.Add(self.mainListBox, 1, wx.EXPAND)
-        mainSizerVert.Add(self.addButton, 0, wx.EXPAND)
-        mainSizerVert.Add(self.delButton, 0, wx.EXPAND)
-        mainSizerVert.Add(self.saveButton, 0, wx.EXPAND)
-        mainSizerHor.Add(mainSizerVert, 3, wx.EXPAND)
-        mainSizerHor.Add(self.mainPanel, 3, wx.EXPAND)
-        self.Bind(wx.EVT_LISTBOX_DCLICK, self.onSelectItem, self.mainListBox)
-        self.Bind(wx.EVT_LISTBOX, self.onSelectItem, self.mainListBox)
-        self.Bind(wx.EVT_BUTTON, self.onClickButtonAdd, self.addButton)
-        self.Bind(wx.EVT_BUTTON, self.onClickButtonSave, self.saveButton)
-        self.Bind(wx.EVT_BUTTON, self.onClickButtonDelete, self.delButton)
-        self.Bind(wx.EVT_BUTTON, self.updateDataListBox())
-        self.SetSizeHints(400, 500, 1000, 700)
+
+        mainSizerHor.Add(self.mainPanel, 1, wx.EXPAND)
 
         self.SetSizer(mainSizerHor)
         self.Show()
         self.Layout()
 
+    def openReceipt(self, evt):
+        choiceReceipt = ReceiptChoice(self, -1, u'Выбери рецепт')
+        choiceReceipt.Show(True)
+
+    def loadReceipt(self):
+        self.mainPanel.listPanel.clean()
+        selection = self.mainPanel.nameReceipt.GetLabel()
+        data = DB.getReceiptData(selection)
+        text = DB.getText(selection)
+        self.mainPanel.addText(text)
+        self.mainPanel.listPanel.genLines(data)
+        self.mainPanel.Layout()
+
+    def openBase(self, evt):
+        wildcard = "Sqlite3 file (*.db)|*.db|" \
+                   "All files (*.*)|*.*"
+        dlg = wx.FileDialog(
+            self, message=u"Выберите файл",
+            defaultDir=os.getcwd(),
+            defaultFile="",
+            wildcard=wildcard,
+            style=wx.OPEN | wx.MULTIPLE | wx.CHANGE_DIR
+            )
+
+        if dlg.ShowModal() == wx.ID_OK:
+            paths = dlg.GetPaths()
+
+    def saveReceipt(self, evt):
+        name = self.mainPanel.nameReceipt.GetLabel()
+        data = self.mainPanel.listPanel.getLines()
+        # print data
+        text = self.mainPanel.mainText.GetValue()
+        DB.saveReceipt(name, text, data)
+
     def updateDataListBox(self):
-        self.mainListBox.update(self.loadDataToListBox())
+        pass
+        # self.mainListBox.update(self.loadDataToListBox())
 
     def loadDataToListBox(self):
         keys = []
-        for i in self.DB.getListReceipt():
+        for i in DB.getListReceipt():
             keys.append(i[0])
         return keys
 
     def onSelectItem(self, event):
         self.mainPanel.listPanel.clean()
-        selection = self.mainListBox.GetStringSelection()
-        data = self.DB.getReceiptData(selection)
-        text = self.DB.getText(selection)
+        selection = self.mainPanel.nameReceipt.GetValue()
+        data = DB.getReceiptData(selection)
+        text = DB.getText(selection)
         self.mainPanel.addText(text)
         self.mainPanel.listPanel.genLines(data)
         self.mainPanel.setCost(event)
 
-    def onClickButtonAdd(self, event):
-        dialog = wx.TextEntryDialog(self, u'Имя блюда', '')
-        if dialog.ShowModal() == wx.ID_OK:
-            self.mainListBox.InsertItems([dialog.GetValue()], 0)
-        else:
-            print 'tss'
+    def newReceipt(self, event):
+        self.mainPanel.clean()
+        while 1:
+            dialog = wx.TextEntryDialog(self, u'Имя блюда', '')
+            answer = dialog.ShowModal()
+            if answer == wx.ID_OK:
+                if dialog.GetValue() == '' or dialog.GetValue() == None:
+                    dlg = wx.MessageDialog(self,
+                                           u'Нельзя пустое имя'.format(self.mainPanel.nameReceipt.GetLabel()),
+                                           u'Предупреждение',
+                                           wx.ID_OK | wx.ICON_WARNING
+                                           )
+                    dlg.ShowModal()
+                    dlg.Destroy()
+                    continue
+                self.mainPanel.setName([dialog.GetValue()])
+                return
+            elif answer == wx.ID_CANCEL:
+                print 'tss'
+                break
 
-    def onClickButtonSave(self, event):
-        name = self.mainListBox.GetString(self.mainListBox.GetSelection())
-        data = self.mainPanel.listPanel.getLines()
-        # print data
-        text = self.mainPanel.mainText.GetValue()
-        self.DB.saveReceipt(name, text, data)
+    def deleteReceipt(self, event):
+        name = self.mainPanel.nameReceipt.GetLabel()
+        if name == '' or name == None:
+            dlg = wx.MessageDialog(self, u'Нельзя удалить пустое имя'.format(self.mainPanel.nameReceipt.GetLabel()),
+                                   u'Предупреждение',
+                                   wx.ID_OK | wx.ICON_WARNING
+                                   )
+            dlg.ShowModal()
+            dlg.Destroy()
+            return
 
-    def onClickButtonDelete(self, event):
-        name = self.mainListBox.GetString(self.mainListBox.GetSelection())
-        self.DB.deleteReceipt(name)
-        self.mainListBox.Delete(self.mainListBox.GetSelection())
+        dlg = wx.MessageDialog(self, u'Точно удалить {}?'.format(self.mainPanel.nameReceipt.GetLabel()),
+                               u'Подтверждение удаления',
+                               wx.YES_NO | wx.ICON_WARNING
+                               )
+
+        if dlg.ShowModal() == wx.ID_YES:
+            DB.deleteReceipt(name)
+            self.mainPanel.nameReceipt.SetLabel('')
+            self.mainPanel.listPanel.clean()
+
+        dlg.Destroy()
+
 
 
 class MainPanel(wx.Panel):
@@ -173,9 +269,10 @@ class MainPanel(wx.Panel):
         panelSizer = wx.BoxSizer(wx.VERTICAL)
         panelSizerButtons = wx.BoxSizer(wx.HORIZONTAL)
         panelSizerCaptionSave = wx.FlexGridSizer(1, 4, 1, 4)
-        self.addButton = wx.Button(self, -1, u"Добавить", size=(100, 30))
-        self.delButton = wx.Button(self, -1, u"Удалить", size=(100, 30))
+        self.addButton = wx.Button(self, -1, u"Добавить строку", size=(-1, 30))
+        self.delButton = wx.Button(self, -1, u"Удалить строку", size=(-1, 30))
 
+        self.nameReceipt = wx.StaticText(self, -1, label=u'Рецепт')
         self.mainText = wx.TextCtrl(self, -1, style=wx.MULTIPLE)
 
         self.costText = wx.StaticText(self, -1, label=u'Итого=')
@@ -184,7 +281,7 @@ class MainPanel(wx.Panel):
 
         self.countText = wx.StaticText(self, -1, label=u'Шт.=')
 
-        self.captionTextSizer = wx.BoxSizer(wx.HORIZONTAL)
+
         self.gridPanel = wx.Panel(self)
         sizer2 = wx.BoxSizer()
         self.listPanel = GridPanel(self.gridPanel)
@@ -200,9 +297,9 @@ class MainPanel(wx.Panel):
         panelSizerButtons.Add(self.addButton, 0)
         panelSizerButtons.Add(self.delButton, 0)
 
-
+        panelSizer.Add((0, 10))
+        panelSizer.Add(self.nameReceipt,1 ,wx.EXPAND, 0)
         panelSizer.Add(panelSizerButtons, 1)
-        panelSizer.Add(self.captionTextSizer,1 ,wx.EXPAND, 0)
         panelSizer.Add(self.gridPanel, 10, wx.EXPAND|wx.ALL)
         panelSizer.Add(self.mainText, 10, wx.EXPAND)
         panelSizer.Add(panelSizerCaptionSave, 1, wx.EXPAND)
@@ -211,8 +308,19 @@ class MainPanel(wx.Panel):
         self.Bind(wx.EVT_BUTTON, self.clickAdd, self.addButton)
         self.Bind(wx.EVT_BUTTON, self.clickDel, self.delButton)
         self.listPanel.Bind(wx.grid.EVT_GRID_CELL_CHANGE, self.setCost)
+        self.Bind(gridlib.EVT_GRID_SELECT_CELL, self.setCellChoice)
         self.count.Bind(wx.EVT_KEY_UP, self.setCost, self.count)
+        self.Bind(wx.EVT_KEY_DOWN, self.test, self.listPanel)
+        self.Bind(gridlib.EVT_GRID_EDITOR_CREATED, self.test)
 
+    def setName(self, name):
+        self.nameReceipt.SetLabel(u''.join(name))
+
+    def clean(self):
+        #TODO add remind to save
+        self.mainText.Clear()
+        self.listPanel.clean()
+        self.Layout()
 
     def clickAdd(self, event):
         self.listPanel.addLine()
@@ -226,7 +334,25 @@ class MainPanel(wx.Panel):
         self.mainText.Clear()
         self.mainText.SetValue(text)
 
+
+    def test(self, evt):
+        self.x = self.listPanel.GetGridCursorCol()
+        self.y = self.listPanel.GetGridCursorRow()
+        self.tt = evt.Control
+        self.tt.Bind(wx.EVT_TEXT, self.test2)
+    def test2(self, evt):
+        data = DB.getListName(evt.GetString())
+        short_list=[]
+        for i in data:
+            short_list.append(i[0])
+        self.tt.Clear()
+        self.tt.Append(short_list)
+        evt.Skip()
+
+
     def setCost(self, evt):
+        # print self.listPanel.GetGridCursorCol()
+        # print self.listPanel.GetGridCursorRow()
         summ = self.listPanel.calcSum(evt)
         self.costText.SetLabel(u"Итого= {} р.".format(summ))
         try:
@@ -236,6 +362,25 @@ class MainPanel(wx.Panel):
         price = float(summ)/count
         self.countText.SetLabel(u"Шт= {} р.".format(twoZeroPoint(price)))
         self.Layout()
+
+    def setCellChoice(self, event):
+        txt = self.listPanel.GetCellValue(event.GetRow(),
+                                event.GetCol())
+        data = DB.getListName(txt)
+        short_list=[]
+        for i in data:
+            short_list.append(i[0])
+        self.listPanel.SetCellEditor(event.GetRow(),
+                                event.GetCol(), gridlib.GridCellChoiceEditor(short_list, allowOthers=True))
+        event.Skip()
+
+    def setCellChoice2(self, (x, y), text):
+        data = DB.getListName(text)
+        print data
+        short_list = []
+        for i in data:
+            short_list.append(i[0])
+        self.listPanel.SetCellEditor(x, y, gridlib.GridCellChoiceEditor(short_list, allowOthers=True))
 
 
 class MainListBox(wx.ListBox):
@@ -275,6 +420,7 @@ class GridPanel(gridlib.Grid):
         self.SetColLabelValue(5, u'Сумма')
         self.SetColSize(5, 100)
 
+
     def clean(self):
         self.DeleteRows(numRows=self.GetNumberRows())
         self.ClearGrid()
@@ -294,7 +440,6 @@ class GridPanel(gridlib.Grid):
 
     def delLine(self):
         dialog = wx.TextEntryDialog(self, u'Номер строки', '')
-
         if dialog.ShowModal() == wx.ID_OK:
             try:
                 self.DeleteRows(pos=int(dialog.GetValue())-1)
@@ -317,10 +462,15 @@ class GridPanel(gridlib.Grid):
             packVolume = self.GetCellValue(i, 2)
             price = self.GetCellValue(i, 3)
             count = self.GetCellValue(i, 4)
+            if packVolume == None: packVolume = 0
+            if price == None: price = 0
+            if count == None: count = 0
             x = (float(price) / float(packVolume)) * float(count)
             summ += x
             self.SetCellValue(i, 5, twoZeroPoint(x))
         return twoZeroPoint(summ)
+
+
 
 
 app = wx.App()
